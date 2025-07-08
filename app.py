@@ -10,7 +10,7 @@ from PIL import Image
 import imagehash
 
 # Directory containing old logos (relative to this script)
-OLD_LOGO_DIR = Path(__file__).parent / "old_logos"
+OLD_LOGO_DIR = "\REBRANDER\old_logos"
 # Hamming distance threshold for perceptual hash matching
 HASH_THRESHOLD = 25
 
