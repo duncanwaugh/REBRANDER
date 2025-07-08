@@ -201,31 +201,40 @@ mapping_text = st.text_area(
 )
 mappings = dict(line.split(",",1) for line in mapping_text.splitlines() if line.strip())
 new_logo = st.file_uploader("Upload new logo image", type=["png","jpg","jpeg"])
-uploaded = st.file_uploader("Upload document to rebrand", type=["docx","pptx","xlsx"])
+uploaded = st.file_uploader("Upload document to rebrand", type=["docx","pptx","xlsx"],accept_multiple_files=True)
 
-if uploaded and st.button("Rebrand Document"):
+if uploaded and st.button("Rebrand Document(s)"):
     if not new_logo:
         st.error("Please upload the new logo image.")
     else:
-        old_hashes = load_old_logo_hashes()
-        try:
-            new_logo_bytes = new_logo.read()
-            ext = uploaded.name.split('.')[-1].lower()
-            if ext == 'docx':
-                output = process_docx(uploaded, mappings, new_logo_bytes, old_hashes)
-            elif ext == 'pptx':
-                output = process_pptx(uploaded, mappings, new_logo_bytes, old_hashes)
-            elif ext in ('xlsx','xlsm'):
-                output = process_excel(uploaded, mappings, new_logo_bytes, old_hashes)
-            st.success("✅ Rebranding complete!")
-            st.download_button(
-                "📥 Download Rebranded Document", 
-                data=output.getvalue(), 
-                file_name=f"rebranded_{uploaded.name}", 
-                mime="application/octet-stream"
-            )
-        except Exception as e:
-            st.error(f"Error during rebranding: {e}")
+        old_hashes    = load_old_logo_hashes()
+        new_logo_bytes = new_logo.read()
+
+        # create a ZIP in memory
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            for file in uploaded:
+                ext = file.name.split('.')[-1].lower()
+                if ext == 'docx':
+                    out = process_docx(file, mappings, new_logo_bytes, old_hashes)
+                elif ext == 'pptx':
+                    out = process_pptx(file, mappings, new_logo_bytes, old_hashes)
+                elif ext in ('xlsx','xlsm'):
+                    out = process_excel(file, mappings, new_logo_bytes, old_hashes)
+                else:
+                    continue
+
+                # add to ZIP under a new filename
+                zf.writestr(f"rebranded_{file.name}", out.getvalue())
+
+        zip_buffer.seek(0)
+        st.success("✅ Batch rebranding complete!")
+        st.download_button(
+            "📥 Download All Rebranded Files", 
+            data=zip_buffer.getvalue(), 
+            file_name="rebranded_documents.zip", 
+            mime="application/zip"
+        )
 
 st.markdown("""
 <hr style='border:none;height:2px;background:#c8102e;'/>
