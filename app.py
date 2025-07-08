@@ -11,6 +11,7 @@ import imagehash
 import base64
 import os
 import subprocess, tempfile
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
 def wmf_to_png_blob(wmf_blob: bytes) -> bytes:
     # write temp WMF
@@ -22,12 +23,6 @@ def wmf_to_png_blob(wmf_blob: bytes) -> bytes:
     # read back PNG
     with open(png_path, "rb") as f:
         return f.read()
-
-# then in replace_images_docx:
-raw_blob = part.blob
-if partname.lower().endswith(".wmf"):
-    raw_blob = wmf_to_png_blob(raw_blob)
-img = Image.open(BytesIO(raw_blob))
 
 # Directory containing old logos (relative to this script)
 OLD_LOGO_DIR = Path(__file__).parent / "old_logos"
@@ -61,22 +56,44 @@ def replace_text_docx(doc: Document, mappings: dict):
                     if find in cell.text:
                         cell.text = cell.text.replace(find, replace)
 
-# Image replacement in Word using perceptual hashing with debug (no scaling)
 def replace_images_docx(doc: Document, old_hashes: list, new_blob: bytes):
     for part in doc.part.package.parts:
-        if part.content_type and part.content_type.startswith('image/'):
+        partname = getattr(part, "partname", "").lower()
+        if not part.content_type.startswith("image/"):
+            continue
+
+        # 1) grab the raw bytes
+        raw = part.blob
+
+        # 2) if it's WMF, convert to PNG first
+        if partname.endswith(".wmf"):
             try:
-                img = Image.open(BytesIO(part.blob))
-                h = imagehash.phash(img)
-                distances = [abs(h - old_h) for old_h in old_hashes]
-                min_dist = min(distances) if distances else None
-                st.write(f"[DEBUG] Word image part '{part.partname}' - min Hamming distance: {min_dist}")
-                if min_dist is not None and min_dist <= HASH_THRESHOLD:
-                    st.write(f"[DEBUG] Replacing Word image part '{part.partname}' (distance {min_dist})")
-                    part._blob = new_blob
+                raw = wmf_to_png_blob(raw)
+                st.write(f"[DEBUG] Converted WMF '{partname}' to PNG blob")
             except Exception as e:
-                st.write(f"[DEBUG] Error processing Word image part '{getattr(part, 'partname', '')}': {e}")
+                st.write(f"[DEBUG] WMF→PNG conversion failed for '{partname}': {e}")
                 continue
+
+        # 3) open & hash the (possibly converted) image
+        try:
+            img = Image.open(BytesIO(raw))
+        except Exception as e:
+            st.write(f"[DEBUG] Cannot open image for '{partname}': {e}")
+            continue
+
+        h = imagehash.phash(img)
+        distances = [abs(h - old_h) for old_h in old_hashes]
+        min_dist = min(distances) if distances else None
+        st.write(f"[DEBUG] Word image part '{partname}' - min Hamming distance: {min_dist}")
+
+        # 4) replace if within threshold
+        if min_dist is not None and min_dist <= HASH_THRESHOLD:
+            st.write(f"[DEBUG] Replacing Word image part '{partname}' (distance {min_dist})")
+            # use the RELATIONSHIP trick rather than part._blob directly
+            for rel in doc.part.rels.values():
+                if rel.reltype == RT.IMAGE and rel._target.partname.lower() == partname:
+                    rel._target._blob = new_blob
+
 
 # Process .docx files
 def process_docx(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hashes: list):
