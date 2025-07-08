@@ -19,7 +19,7 @@ def load_old_logo_hashes(threshold: int = HASH_THRESHOLD):
     logo_hashes = []
     if OLD_LOGO_DIR.exists() and OLD_LOGO_DIR.is_dir():
         for img_path in OLD_LOGO_DIR.iterdir():
-            if img_path.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+            if img_path.suffix.lower() in {".PNG", ".JPG", ".JPEG"}:
                 try:
                     img = Image.open(img_path)
                     logo_hashes.append(imagehash.phash(img))
