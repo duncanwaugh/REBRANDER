@@ -21,7 +21,7 @@ def load_old_logo_hashes(threshold: int = HASH_THRESHOLD):
     logo_hashes = []
     if OLD_LOGO_DIR.exists() and OLD_LOGO_DIR.is_dir():
         for img_path in OLD_LOGO_DIR.iterdir():
-            if img_path.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+            if img_path.suffix.lower() in {".PNG", ".jpg", ".jpeg"}:
                 try:
                     img = Image.open(img_path)
                     logo_hashes.append(imagehash.phash(img))
@@ -142,7 +142,7 @@ def process_excel(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hash
 st.set_page_config(page_title="File Rebrander", page_icon="📘", layout="wide")
 
 # Display logo if available
-logo_path = OLD_LOGO_DIR / "aecon_logo.png"
+logo_path = OLD_LOGO_DIR / "logo_1.PNG"
 if logo_path.exists():
     st.image(str(logo_path), width=300)
 else:
