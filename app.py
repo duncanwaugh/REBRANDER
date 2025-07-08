@@ -129,7 +129,7 @@ def process_excel(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hash
     return out_io
 # --- Streamlit UI Styling (Aecon Lessons Learned style) ---
 st.set_page_config(page_title="File Rebrander", page_icon="📘", layout="wide")
-st.image("logo_1.png", width=300)
+#st.image("logo_1.png", width=300)
 st.markdown("""
 <style>
   .stApp { background:#fff; }
