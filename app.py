@@ -12,7 +12,7 @@ import imagehash
 # Directory containing old logos (relative to this script)
 OLD_LOGO_DIR = Path(__file__).parent / "old_logos"
 # Hamming distance threshold for perceptual hash matching
-HASH_THRESHOLD = 25
+HASH_THRESHOLD = 30
 
 # Load and hash old logos once at startup
 def load_old_logo_hashes(threshold: int = HASH_THRESHOLD):
