@@ -10,6 +10,24 @@ from PIL import Image
 import imagehash
 import base64
 import os
+import subprocess, tempfile
+
+def wmf_to_png_blob(wmf_blob: bytes) -> bytes:
+    # write temp WMF
+    with tempfile.NamedTemporaryFile(suffix=".wmf", delete=False) as wmftmp:
+        wmftmp.write(wmf_blob)
+    png_path = wmftmp.name + ".png"
+    # convert via ImageMagick CLI
+    subprocess.run(["magick", wmftmp.name, png_path], check=True)
+    # read back PNG
+    with open(png_path, "rb") as f:
+        return f.read()
+
+# then in replace_images_docx:
+raw_blob = part.blob
+if partname.lower().endswith(".wmf"):
+    raw_blob = wmf_to_png_blob(raw_blob)
+img = Image.open(BytesIO(raw_blob))
 
 # Directory containing old logos (relative to this script)
 OLD_LOGO_DIR = Path(__file__).parent / "old_logos"
