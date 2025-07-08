@@ -61,42 +61,42 @@ def replace_images_docx(doc: Document, old_hashes: list, new_logo_blob: bytes):
         partname = getattr(part, "partname", "").lower()
         ctype    = part.content_type
 
-        # only handle images
         if not ctype.startswith("image/"):
             continue
 
-        # grab raw bytes
+        # 1) grab & convert raw bytes if WMF
         raw = part.blob
-
-        # if it’s a WMF, convert & re-label to PNG
         if partname.endswith(".wmf"):
             try:
                 raw = wmf_to_png_blob(raw)
-                # overwrite the part’s content type so OPC writes it as PNG
                 part._content_type = "image/png"
-                st.write(f"[DEBUG] Converted WMF '{partname}' → PNG blob + set content_type to image/png")
+                st.write(f"[DEBUG] Converted WMF '{partname}' → PNG + set content_type")
             except Exception as e:
-                st.write(f"[DEBUG] WMF→PNG conversion failed for '{partname}': {e}")
+                st.write(f"[DEBUG] WMF→PNG failed for '{partname}': {e}")
                 continue
 
-        # open & hash
+        # 2) hash it
         try:
             img = Image.open(BytesIO(raw))
         except Exception as e:
-            st.write(f"[DEBUG] Cannot open image for '{partname}': {e}")
+            st.write(f"[DEBUG] Cannot open image '{partname}': {e}")
             continue
 
         h = imagehash.phash(img)
         distances = [abs(h - old_h) for old_h in old_hashes]
         min_dist  = min(distances) if distances else None
-        st.write(f"[DEBUG] Word image part '{partname}' → min Hamming distance: {min_dist}")
+        st.write(f"[DEBUG] '{partname}' → min distance = {min_dist}")
 
-        # if it matches, swap in the new PNG blob and set its content type
+        # 3) if it matches, overwrite *both* the part and the rel‐target
         if min_dist is not None and min_dist <= HASH_THRESHOLD:
-            st.write(f"[DEBUG] Replacing Word image part '{partname}' (distance {min_dist})")
+            st.write(f"[DEBUG] Replacing '{partname}' (distance {min_dist})")
+            # a) update the OPC part
+            part._blob = new_logo_blob
+            part._content_type = "image/png"
+            # b) update the relationship target
             for rel in doc.part.rels.values():
                 if rel.reltype == RT.IMAGE and rel._target.partname.lower() == partname:
-                    rel._target._blob         = new_logo_blob
+                    rel._target._blob = new_logo_blob
                     rel._target._content_type = "image/png"
 
 
