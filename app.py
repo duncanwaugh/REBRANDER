@@ -207,7 +207,7 @@ mapping_text = st.text_area(
 )
 mappings = dict(line.split(",",1) for line in mapping_text.splitlines() if line.strip())
 new_logo = st.file_uploader("Upload new logo image", type=["png","jpg","jpeg"])
-uploaded = st.file_uploader("Upload document to rebrand", type=["docx","pptx","xlsx"],accept_multiple_files=True)
+uploaded = st.file_uploader("Upload document(s) to rebrand", type=["docx","pptx","xlsx"],accept_multiple_files=True)
 
 if uploaded and st.button("Rebrand Document(s)"):
     if not new_logo:
