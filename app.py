@@ -56,25 +56,30 @@ def replace_text_docx(doc: Document, mappings: dict):
                     if find in cell.text:
                         cell.text = cell.text.replace(find, replace)
 
-def replace_images_docx(doc: Document, old_hashes: list, new_blob: bytes):
+def replace_images_docx(doc: Document, old_hashes: list, new_logo_blob: bytes):
     for part in doc.part.package.parts:
         partname = getattr(part, "partname", "").lower()
-        if not part.content_type.startswith("image/"):
+        ctype    = part.content_type
+
+        # only handle images
+        if not ctype.startswith("image/"):
             continue
 
-        # 1) grab the raw bytes
+        # grab raw bytes
         raw = part.blob
 
-        # 2) if it's WMF, convert to PNG first
+        # if it’s a WMF, convert & re-label to PNG
         if partname.endswith(".wmf"):
             try:
                 raw = wmf_to_png_blob(raw)
-                st.write(f"[DEBUG] Converted WMF '{partname}' to PNG blob")
+                # overwrite the part’s content type so OPC writes it as PNG
+                part._content_type = "image/png"
+                st.write(f"[DEBUG] Converted WMF '{partname}' → PNG blob + set content_type to image/png")
             except Exception as e:
                 st.write(f"[DEBUG] WMF→PNG conversion failed for '{partname}': {e}")
                 continue
 
-        # 3) open & hash the (possibly converted) image
+        # open & hash
         try:
             img = Image.open(BytesIO(raw))
         except Exception as e:
@@ -83,16 +88,17 @@ def replace_images_docx(doc: Document, old_hashes: list, new_blob: bytes):
 
         h = imagehash.phash(img)
         distances = [abs(h - old_h) for old_h in old_hashes]
-        min_dist = min(distances) if distances else None
-        st.write(f"[DEBUG] Word image part '{partname}' - min Hamming distance: {min_dist}")
+        min_dist  = min(distances) if distances else None
+        st.write(f"[DEBUG] Word image part '{partname}' → min Hamming distance: {min_dist}")
 
-        # 4) replace if within threshold
+        # if it matches, swap in the new PNG blob and set its content type
         if min_dist is not None and min_dist <= HASH_THRESHOLD:
             st.write(f"[DEBUG] Replacing Word image part '{partname}' (distance {min_dist})")
-            # use the RELATIONSHIP trick rather than part._blob directly
             for rel in doc.part.rels.values():
                 if rel.reltype == RT.IMAGE and rel._target.partname.lower() == partname:
-                    rel._target._blob = new_blob
+                    rel._target._blob         = new_logo_blob
+                    rel._target._content_type = "image/png"
+
 
 
 # Process .docx files
