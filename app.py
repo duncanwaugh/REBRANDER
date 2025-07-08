@@ -19,7 +19,7 @@ def wmf_to_png_blob(wmf_blob: bytes) -> bytes:
         wmftmp.write(wmf_blob)
     png_path = wmftmp.name + ".png"
     # convert via ImageMagick CLI
-    subprocess.run(["magick", wmftmp.name, png_path], check=True)
+    subprocess.run(["convert", wmftmp.name, png_path], check=True)
     # read back PNG
     with open(png_path, "rb") as f:
         return f.read()
