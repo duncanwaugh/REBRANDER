@@ -245,6 +245,6 @@ if uploaded and st.button("Rebrand Document(s)"):
 st.markdown("""
 <hr style='border:none;height:2px;background:#c8102e;'/>
 <div style='text-align:center;padding:10px;background:#c8102e;color:#fff;'>
-  Built by Aecon | For internal use only
+  Built for Aecon | Still in development 
 </div>
 """, unsafe_allow_html=True)
