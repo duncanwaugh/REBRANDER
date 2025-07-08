@@ -8,6 +8,8 @@ from openpyxl import load_workbook
 import zipfile
 from PIL import Image
 import imagehash
+import base64
+import os
 
 # Directory containing old logos (relative to this script)
 OLD_LOGO_DIR = Path(__file__).parent / "old_logos"
@@ -19,7 +21,7 @@ def load_old_logo_hashes(threshold: int = HASH_THRESHOLD):
     logo_hashes = []
     if OLD_LOGO_DIR.exists() and OLD_LOGO_DIR.is_dir():
         for img_path in OLD_LOGO_DIR.iterdir():
-            if img_path.suffix.lower() in {".PNG", ".JPG", ".JPEG"}:
+            if img_path.suffix.lower() in {".png", ".jpg", ".jpeg"}:
                 try:
                     img = Image.open(img_path)
                     logo_hashes.append(imagehash.phash(img))
@@ -41,17 +43,21 @@ def replace_text_docx(doc: Document, mappings: dict):
                     if find in cell.text:
                         cell.text = cell.text.replace(find, replace)
 
-# Image replacement in Word using perceptual hashing (no scaling)
+# Image replacement in Word using perceptual hashing with debug (no scaling)
 def replace_images_docx(doc: Document, old_hashes: list, new_blob: bytes):
-    # Replace any image part in the document package
     for part in doc.part.package.parts:
         if part.content_type and part.content_type.startswith('image/'):
             try:
                 img = Image.open(BytesIO(part.blob))
                 h = imagehash.phash(img)
-                if any(abs(h - old_h) <= HASH_THRESHOLD for old_h in old_hashes):
+                distances = [abs(h - old_h) for old_h in old_hashes]
+                min_dist = min(distances) if distances else None
+                st.write(f"[DEBUG] Word image part '{part.partname}' - min Hamming distance: {min_dist}")
+                if min_dist is not None and min_dist <= HASH_THRESHOLD:
+                    st.write(f"[DEBUG] Replacing Word image part '{part.partname}' (distance {min_dist})")
                     part._blob = new_blob
-            except Exception:
+            except Exception as e:
+                st.write(f"[DEBUG] Error processing Word image part '{getattr(part, 'partname', '')}': {e}")
                 continue
 
 # Process .docx files
@@ -64,10 +70,10 @@ def process_docx(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hashe
     output.seek(0)
     return output
 
-# Process .pptx files with perceptual hash image replacement (no scaling)
+# Process .pptx files with perceptual hash image replacement and debug info (no scaling)
 def process_pptx(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hashes: list):
     prs = Presentation(uploaded_file)
-    for slide in prs.slides:
+    for slide_idx, slide in enumerate(prs.slides, start=1):
         for shape in slide.shapes:
             # Text replacement
             if shape.has_text_frame:
@@ -80,23 +86,26 @@ def process_pptx(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hashe
                 try:
                     img = Image.open(BytesIO(shape.image.blob))
                     h = imagehash.phash(img)
-                    if any(abs(h - old_h) <= HASH_THRESHOLD for old_h in old_hashes):
-                        part = shape.image
+                    distances = [abs(h - old_h) for old_h in old_hashes]
+                    min_dist = min(distances) if distances else None
+                    st.write(f"[DEBUG] PPTX slide {slide_idx} image - min Hamming distance: {min_dist}")
+                    if min_dist is not None and min_dist <= HASH_THRESHOLD:
+                        st.write(f"[DEBUG] Replacing PPTX slide {slide_idx} image (distance {min_dist})")
                         left, top, width, height = shape.left, shape.top, shape.width, shape.height
                         slide.shapes._spTree.remove(shape._element)
-                        prs.slides[prs.slides.index(slide)].shapes.add_picture(
+                        prs.slides[slide_idx-1].shapes.add_picture(
                             BytesIO(new_logo_bytes), left, top, width, height
                         )
-                except Exception:
+                except Exception as e:
+                    st.write(f"[DEBUG] Error processing PPTX slide {slide_idx} image: {e}")
                     continue
     output = BytesIO()
     prs.save(output)
     output.seek(0)
     return output
 
-# Process .xlsx files: text + image replacement in xl/media (no scaling)
+# Process .xlsx files: text + image replacement in xl/media with debug info (no scaling)
 def process_excel(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hashes: list):
-    # Text replacement
     wb = load_workbook(filename=BytesIO(uploaded_file.read()))
     for ws in wb.worksheets:
         for row in ws.iter_rows(values_only=False):
@@ -105,12 +114,9 @@ def process_excel(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hash
                     for find, replace in mappings.items():
                         if find in cell.value:
                             cell.value = cell.value.replace(find, replace)
-    # Save intermediate workbook
     interim = BytesIO()
     wb.save(interim)
     interim.seek(0)
-
-    # Replace images in xl/media
     in_zip = zipfile.ZipFile(interim, 'r')
     out_io = BytesIO()
     with zipfile.ZipFile(out_io, 'w') as out_zip:
@@ -120,16 +126,28 @@ def process_excel(uploaded_file, mappings: dict, new_logo_bytes: bytes, old_hash
                 try:
                     img = Image.open(BytesIO(data))
                     h = imagehash.phash(img)
-                    if any(abs(h - old_h) <= HASH_THRESHOLD for old_h in old_hashes):
+                    distances = [abs(h - old_h) for old_h in old_hashes]
+                    min_dist = min(distances) if distances else None
+                    st.write(f"[DEBUG] Excel media '{item.filename}' - min Hamming distance: {min_dist}")
+                    if min_dist is not None and min_dist <= HASH_THRESHOLD:
+                        st.write(f"[DEBUG] Replacing Excel media '{item.filename}' (distance {min_dist})")
                         data = new_logo_bytes
-                except Exception:
-                    pass
+                except Exception as e:
+                    st.write(f"[DEBUG] Error processing Excel media '{item.filename}': {e}")
             out_zip.writestr(item, data)
     out_io.seek(0)
     return out_io
+
 # --- Streamlit UI Styling (Aecon Lessons Learned style) ---
 st.set_page_config(page_title="File Rebrander", page_icon="📘", layout="wide")
-st.image("logo_1.PNG", width=300)
+
+# Display logo if available
+logo_path = OLD_LOGO_DIR / "aecon_logo.png"
+if logo_path.exists():
+    st.image(str(logo_path), width=300)
+else:
+    st.write("Logo file not found; please add 'old_logos/aecon_logo.png'.")
+
 st.markdown("""
 <style>
   .stApp { background:#fff; }
@@ -140,7 +158,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("File Rebrander")
-
 # Main inputs
 mapping_text = st.text_area(
     "Find → Replace mappings (one per line, comma-separated)",
@@ -157,7 +174,6 @@ if uploaded and st.button("Rebrand Document"):
     else:
         old_hashes = load_old_logo_hashes()
         try:
-            output = None
             new_logo_bytes = new_logo.read()
             ext = uploaded.name.split('.')[-1].lower()
             if ext == 'docx':
